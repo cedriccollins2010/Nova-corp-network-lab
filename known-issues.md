@@ -80,3 +80,47 @@ Un `execute disk scan 17` a réglé l'alerte de corruption. Effet de bord bienve
 ## Licence FortiGate — bloquée
 
 L'activation de la licence d'évaluation via `execute vm-license` reste coincée sur « Requesting FortiCare Trial license ». Le double-NAT du labo bloque très probablement le flux HTTPS d'enregistrement. Cela dit, même une licence d'évaluation valide garderait la limite dure de trois policies, trois interfaces et trois routes — c'est donc une contrainte que j'assume dans l'architecture plutôt qu'un blocage à lever absolument.
+
+## Routage syslog R1 vers le SIEM — résolu
+
+C'est le problème qui a pris le plus de temps à fermer. Les logs de R1 
+remontent maintenant jusqu'au conteneur syslog-ng en transitant par le 
+FortiGate, selon ce chemin :
+R1 (10.0.0.2) → FortiGate port2 (10.0.0.1) → port1 (NAT) → syslog-ng (192.168.66.128:514)
+
+La chaîne complète a été validée le 2026-07-21 par trois captures 
+indépendantes : le sniffer FortiGate confirmant le SNAT, tcpdump sur br0 
+voyant arriver les paquets UDP/514, et syslog-ng loggant effectivement 
+les messages de R1.
+
+**Ce qui bloquait.** La destination syslog n'était pas configurée de façon 
+persistante sur R1 — aucun `logging host` dans la running-config. Les 
+captures documentées plus haut dans ce fichier provenaient de tests 
+ponctuels. Une fois `logging host 192.168.66.128` ajouté avec 
+`logging trap informational`, les paquets ont immédiatement traversé la 
+chaîne complète.
+
+La policy `LAN-to-Internet` était correcte depuis le début : `HOST-R1` 
+(`10.0.0.2/32`) était bien dans `GRP-INTERNET-ALLOWED`, le service 
+`SYSLOG` était autorisé, et le NAT était actif. Le problème était 
+simplement l'absence de configuration persistante côté R1.
+
+Config appliquée sur R1 :
+logging host 192.168.66.128
+logging trap informational
+logging on
+
+**Point d'attention :** les messages apparaissent dans syslog-ng avec la 
+source `192.168.66.131` (IP NATée du FortiGate) et non `10.0.0.2`. Pour 
+retrouver R1 dans Graylog, filtrer sur le contenu du message plutôt que 
+sur l'IP source, ou configurer `logging origin-id hostname` sur R1 pour 
+que le hostname apparaisse dans le payload syslog.
+
+**Config R1 à sauvegarder :**
+
+**Point d'attention :** les messages apparaissent dans syslog-ng avec la 
+source `192.168.66.131` (IP NATée du FortiGate) et non `10.0.0.2`. Pour 
+retrouver R1 dans Graylog, filtrer sur le contenu du message plutôt que 
+sur l'IP source, ou configurer `logging origin-id hostname` sur R1 pour 
+que le hostname apparaisse dans le payload syslog.
+
