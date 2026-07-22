@@ -1,0 +1,145 @@
+# ============================================================
+# NOVA_CORP — Stack supervision (Ubuntu VM, VMnet2)
+# Graylog + OpenSearch + Zabbix + LibreNMS
+# ============================================================
+
+version: "3.8"
+
+services:
+
+  # ── OpenSearch ──────────────────────────────────────────────
+  opensearch:
+    image: opensearchproject/opensearch:2.11.0
+    container_name: nova_opensearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
+      - DISABLE_SECURITY_PLUGIN=true
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - nova_net
+
+  # ── Graylog ─────────────────────────────────────────────────
+  graylog:
+    image: graylog/graylog:5.2
+    container_name: nova_graylog
+    restart: unless-stopped
+    depends_on:
+      - opensearch
+      - mongo
+    environment:
+      - GRAYLOG_PASSWORD_SECRET=<GRAYLOG_SECRET_MIN_16_CHARS>
+      - GRAYLOG_ROOT_PASSWORD_SHA2=<SHA256_OF_ADMIN_PASSWORD>
+      - GRAYLOG_HTTP_EXTERNAL_URI=http://192.168.60.x:9000/
+      - GRAYLOG_ELASTICSEARCH_HOSTS=http://opensearch:9200
+      - GRAYLOG_MONGODB_URI=mongodb://mongo/graylog
+    ports:
+      - "9000:9000"   # Interface web
+      - "12201:12201/udp"  # GELF UDP (depuis syslog-ng)
+      - "1514:1514/udp"    # Syslog UDP direct
+    networks:
+      - nova_net
+
+  # ── MongoDB (requis par Graylog) ────────────────────────────
+  mongo:
+    image: mongo:6.0
+    container_name: nova_mongo
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - nova_net
+
+  # ── Zabbix Server ───────────────────────────────────────────
+  zabbix-server:
+    image: zabbix/zabbix-server-pgsql:ubuntu-6.4-latest
+    container_name: nova_zabbix_server
+    restart: unless-stopped
+    depends_on:
+      - zabbix-db
+    environment:
+      - DB_SERVER_HOST=zabbix-db
+      - POSTGRES_USER=zabbix
+      - POSTGRES_PASSWORD=<ZABBIX_DB_PASSWORD>
+    ports:
+      - "10051:10051"
+    networks:
+      - nova_net
+
+  zabbix-web:
+    image: zabbix/zabbix-web-nginx-pgsql:ubuntu-6.4-latest
+    container_name: nova_zabbix_web
+    restart: unless-stopped
+    depends_on:
+      - zabbix-server
+      - zabbix-db
+    environment:
+      - DB_SERVER_HOST=zabbix-db
+      - POSTGRES_USER=zabbix
+      - POSTGRES_PASSWORD=<ZABBIX_DB_PASSWORD>
+      - ZBX_SERVER_HOST=zabbix-server
+      - PHP_TZ=America/Toronto
+    ports:
+      - "8080:8080"
+    networks:
+      - nova_net
+
+  zabbix-db:
+    image: postgres:15-alpine
+    container_name: nova_zabbix_db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=zabbix
+      - POSTGRES_PASSWORD=<ZABBIX_DB_PASSWORD>
+      - POSTGRES_DB=zabbix
+    volumes:
+      - zabbix_db_data:/var/lib/postgresql/data
+    networks:
+      - nova_net
+
+  # ── LibreNMS ────────────────────────────────────────────────
+  librenms:
+    image: librenms/librenms:latest
+    container_name: nova_librenms
+    restart: unless-stopped
+    environment:
+      - DB_HOST=librenms-db
+      - DB_NAME=librenms
+      - DB_USER=librenms
+      - DB_PASSWORD=<LIBRENMS_DB_PASSWORD>
+      - APP_URL=http://192.168.60.x:8081
+    ports:
+      - "8081:8000"
+    volumes:
+      - librenms_data:/data
+    networks:
+      - nova_net
+
+  librenms-db:
+    image: mariadb:10.11
+    container_name: nova_librenms_db
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=<LIBRENMS_ROOT_PASSWORD>
+      - MYSQL_DATABASE=librenms
+      - MYSQL_USER=librenms
+      - MYSQL_PASSWORD=<LIBRENMS_DB_PASSWORD>
+    volumes:
+      - librenms_db_data:/var/lib/mysql
+    networks:
+      - nova_net
+
+volumes:
+  opensearch_data:
+  mongo_data:
+  zabbix_db_data:
+  librenms_data:
+  librenms_db_data:
+
+networks:
+  nova_net:
+    driver: bridge

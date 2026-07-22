@@ -1,14 +1,29 @@
-# NOVA_CORP
+# NOVA_CORP — Lab réseau d'entreprise simulée
 
-Labo d'infrastructure d'entreprise monté sur une seule machine, pour pratiquer le réseau, la sécurité FortiGate, l'Active Directory et la supervision dans des conditions proches de la production. Le tout simule une PME d'une vingtaine à une cinquantaine de postes, sous le domaine fictif `novaenterprise.com`.
+> **Statut du projet :** En développement actif | Infrastructure de base opérationnel | Deux bugs documentés en cours de résolution
 
-Ce dépôt rassemble l'architecture, les configurations (nettoyées) et les procédures. Il documente aussi, volontairement, les problèmes rencontrés et la façon dont je les ai diagnostiqués — y compris ceux que je n'ai pas encore résolus.
+Simulation d'une PME de 20 à 50 employés, déployée sur une seule machine physique (16 Go RAM) sous VMware Workstation Pro. Le lab sert à la fois de terrain de pratique pour les certifications (CCNA, Security+, FCP FortiGate) et de portfolio technique démontrant des compétences en architecture réseau, sécurité périmétrique, supervision et résolution d'incidents complexes.
 
-## Topologie réseau
+---
 
-Cinq VLANs sont portés par les sous-interfaces `dot1Q` de R1 (de `Fa0/0.10` à `Fa0/0.50`). C'est R1 qui assure le routage inter-VLAN et sert de passerelle (`.254`) à chaque segment. Il rejoint le FortiGate par un lien point-à-point en `/30`.
+## 📊 Statut rapide
 
-Le FortiGate, lui, ne filtre pas le trafic entre VLANs : il fait office de passerelle Internet. Concrètement, tout le trafic qui sort vers le WAN passe par lui (entrée sur `port2`, sortie sur `port1`), mais le trafic interne d'un VLAN à l'autre ne quitte jamais R1.
+| Composant | État |
+|---|---|
+| Switch L3 — VLANs, trunks, ACLs, SNMP | ✅ Opérationnel |
+| Routeur R1 — inter-VLAN, NTP, SNMP, SSH, syslog | ✅ Opérationnel |
+| FortiGate VM 7.6.7 — 3 policies condensées | ✅ Opérationnel |
+| syslog-ng Docker | ✅ Déployé |
+| Graylog + OpenSearch Docker | ✅ Déployé |
+| Zabbix + LibreNMS | ✅ Opérationnels |
+| Active Directory (novaenterprise.com) | ✅ Opérationnel |
+| Bug A — Asymmetric bridge GNS3/ubridge | 🔶 Workaround actif |
+| Bug B — Syslog R1 → FortiGate → SIEM | 🔴 Non résolu |
+| NetPilot AI — collecteur Netmiko | 🚧 En développement |
+
+---
+
+## 🏗 Topologie
 
 ```mermaid
 graph TD
@@ -35,62 +50,171 @@ graph TD
     R1 -.->|"syslog (en cours)"| SIEM["SIEM / supervision<br/>syslog-ng · Graylog · Zabbix · LibreNMS"]
 ```
 
-Le flux syslog `R1 → FortiGate → SIEM` n'est pas encore fonctionnel : les paquets arrivent bien sur `port2` mais ne franchissent pas le moteur de politique. Le diagnostic complet est dans [docs/known-issues.md](docs/known-issues.md).
+---
 
-Toutes les adresses de ce dépôt sont en RFC 1918 (plages privées). Les credentials, clés et configs brutes sont exclus par le `.gitignore`.
-
-## Plan d'adressage
-
-Les cinq VLANs vivent chacun dans un `/24` dédié, tous avec R1 en passerelle sur `.254` :
-
-- VLAN 10 (Users) — `192.168.10.0/24`, sous-interface `Fa0/0.10`
-- VLAN 20 (Servers) — `192.168.20.0/24`, `Fa0/0.20`
-- VLAN 30 (Management) — `192.168.30.0/24`, `Fa0/0.30`
-- VLAN 40 (DMZ) — `192.168.40.0/24`, `Fa0/0.40`
-- VLAN 50 (Guests) — `192.168.50.0/24`, `Fa0/0.50`
-
-Le lien entre R1 et le FortiGate est un `/30` : `10.0.0.2` côté routeur (`Gi2/0`), `10.0.0.1` côté pare-feu (`port2`).
-
-## Ce qu'il y a dans le labo
-
-Côté réseau, deux équipements Cisco IOSv émulés sous GNS3 : R1 (routage inter-VLAN, trunk dot1Q) et un switch L3. La frontière Internet est tenue par un FortiGate VM 7.6.7, qui gère les politiques et le NAT en sortie.
-
-Côté systèmes, un domaine Active Directory (`novaenterprise.com`) avec un poste Windows 11 (PROD01) joint au domaine.
-
-Côté observabilité, une chaîne complète tourne sur des VMs Ubuntu 22.04 : syslog-ng pour collecter et router les logs, Graylog adossé à OpenSearch pour l'indexation et la recherche (le tout en Docker), Zabbix pour les métriques et l'alerting, LibreNMS pour la cartographie SNMP.
-
-## Où en est le projet
-
-La partie réseau tourne : routage inter-VLAN, commutation, segmentation FortiGate avec ses groupes d'adresses. L'Active Directory et le poste PROD01 sont opérationnels, tout comme la stack SIEM (Graylog/OpenSearch), Zabbix et LibreNMS.
-
-Deux chantiers restent ouverts. Le premier, prioritaire, est le routage syslog jusqu'au SIEM, bloqué au niveau du FortiGate. Le second est la documentation des procédures de déploiement, encore partielle.
-
-## Environnement
-
-Tout tourne sur une seule machine Windows via VMware Workstation Pro (version gratuite). GNS3 héberge R1, le switch L3 et le FortiGate ; des VMs Ubuntu portent les services de supervision, sur un réseau séparé du LAN de production.
-
-À noter : le nœud Cloud de GNS3 souffre d'un bug de bridge asymétrique, que je contourne en passant par le lien interne `10.0.0.0/30` de R1. C'est détaillé dans le journal des problèmes.
-
-## Organisation du dépôt
+## 📁 Structure du dépôt
 
 ```
-NOVA_CORP/
-├── README.md
+nova-corp-network-lab/
+├── README.md                           ← Ce fichier
 ├── docs/
-│   ├── architecture.md    architecture détaillée et flux de trafic
-│   ├── known-issues.md    problèmes rencontrés et diagnostics
-│   └── topology.svg        schéma réseau
-├── network/               configs Cisco IOSv (nettoyées)
-├── fortigate/             politiques FortiGate (nettoyées)
-├── ad/                    scripts PowerShell et GPO (sans credentials)
-└── monitoring/            configs syslog-ng, Zabbix, LibreNMS, SIEM
+│   ├── architecture.md                 ← Choix d'architecture détaillés
+│   ├── known-issues.md                 ← Bug A et Bug B — diagnostics
+│   ├── journal-deploiement.md          ← Chronologie complète (9 phases)
+│   └── roadmap.md                      ← Ce qui reste à faire
+├── network/
+│   ├── R1.conf                         ← Config Cisco IOSv (sanitisée)
+│   └── switch-L3.conf                  ← Config switch L3 (sanitisée)
+├── fortigate/
+│   └── policies.conf                   ← Policies FortiGate (sanitisées)
+├── supervision/
+│   └── docker-compose.yml              ← Stack Graylog/OpenSearch/Zabbix/LibreNMS
+├── netpilot/
+│   └── init_indices.py                 ← Initialisation index OpenSearch (11 assertions OK)
+└── mnt/user-data/outputs/              ← Configs préparées
+    └── fortigate/
 ```
 
-## Une note sur l'approche
+---
 
-Ce labo n'est pas figé — c'est un environnement sur lequel je continue de travailler. J'y documente autant ce qui marche que ce qui coince, parce que la démarche de diagnostic a autant de valeur que la config finale. Le problème syslog en est un bon exemple : il est toujours ouvert, mais tout le raisonnement qui a permis de l'isoler est écrit noir sur blanc.
+## 🚀 Quick Start
 
-## Licence
+### Prérequis
 
-Projet personnel, sous licence MIT. Les configurations sont volontairement nettoyées et ne sont pas destinées à un usage direct en production. Aucune donnée réelle ni adresse publique n'est exposée.
-"# Nova-corp-network-lab" 
+- VMware Workstation Pro (version gratuite OK)
+- GNS3 2.2.59+ avec GNS3 VM
+- 16 Go RAM minimum (recommandé)
+- Appliances GNS3 : Cisco IOSv, Cisco IOSvL2, FortiGate-VM64-KVM 7.6.7
+
+### Déploiement rapide
+
+1. **Lancer GNS3** et importer les configurations Cisco depuis `network/`
+2. **Déployer FortiGate** et injecter `fortigate/policies.conf`
+3. **Démarrer la stack supervision** sur Ubuntu VM :
+   ```bash
+   cd supervision/
+   docker-compose up -d
+   ```
+4. **Initialiser les index OpenSearch** :
+   ```bash
+   pip install opensearch-py sentence-transformers
+   python netpilot/init_indices.py
+   ```
+5. **Accéder aux interfaces** :
+   - Graylog : `http://192.168.60.x:9000`
+   - Zabbix : `http://192.168.60.x:8080`
+   - LibreNMS : `http://192.168.60.x:8081`
+
+---
+
+## 📚 Documentation
+
+Pour une compréhension complète, consulte dans cet ordre :
+
+1. **[architecture.md](docs/architecture.md)** — Vue d'ensemble, VLANs, plans d'adressage, choix architecturaux
+2. **[journal-deploiement.md](docs/journal-deploiement.md)** — Comment tout a été construit, phase par phase (9 phases documentées)
+3. **[known-issues.md](docs/known-issues.md)** — Bug A (workaround actif) et Bug B (non résolu), diagnostics complets
+4. **[roadmap.md](docs/roadmap.md)** — Priorités suivantes et backlog
+
+---
+
+## 🔧 Stack technologique
+
+| Composant | Rôle | Déploiement |
+|---|---|---|
+| Cisco IOSv | Routeur R1 (inter-VLAN) | GNS3 |
+| Cisco IOSvL2 | Switch L3 (5 VLANs) | GNS3 |
+| FortiGate-VM64-KVM 7.6.7 | Pare-feu périmétrique + NAT | GNS3 |
+| syslog-ng | Collecte logs réseau | Docker — GNS3 VM |
+| Graylog + OpenSearch | SIEM et indexation | Docker — Ubuntu VM |
+| Zabbix | Supervision SNMP/agent | Docker — Ubuntu VM |
+| LibreNMS | Découverte réseau + graphes | Docker — Ubuntu VM |
+| Windows Server 2022 | Active Directory | VMware |
+| Windows 11 (PROD01) | Poste client test | VMware |
+
+---
+
+## ⚠️ Problèmes connus
+
+### Bug A — Asymmetric bridge (GNS3 Cloud node)
+**Sévérité :** Moyen | **Statut :** Workaround actif
+
+Les réponses ARP de l'extérieur ne remontent pas via le Cloud node GNS3 (ubridge asymétrie). **Workaround :** tout passe via le lien interne `10.0.0.0/30` (R1 ↔ FortiGate), la supervision via VMnet2 direct.
+
+👉 Détails complets : [known-issues.md → Bug A](docs/known-issues.md#bug-a--)
+
+### Bug B — Syslog R1 → FortiGate → SIEM
+**Sévérité :** Élevé | **Statut :** Non résolu — piste identifiée
+
+Les paquets syslog arrivent sur `port2` du FortiGate mais ne ressortent pas. Le drop est interne (avant le moteur de policy, probablement RPF/local-in handler).
+
+**Piste de résolution :** changer la destination syslog sur R1 pour pointer directement vers syslog-ng (192.168.66.128:514) au lieu de l'IP du FortiGate.
+
+👉 Détails complets : [known-issues.md → Bug B](docs/known-issues.md#bug-b--)
+
+---
+
+## 🎯 Certifications ciblées
+
+- Cisco CCNA (concepts appliqués dans le lab)
+- CompTIA Security+ ✅ (obtenu)
+- Microsoft MD-102 ✅ (obtenu)
+- **FCP FortiGate 7.6 Administrator (NSE4)** — en préparation
+- GCIH — planifié
+
+---
+
+## 🔐 Sécurité et bonnes pratiques
+
+- ✅ Toutes les adresses en RFC 1918 (192.168.x.x, 10.x.x.x)
+- ✅ Credentials et clés SSH exclus du dépôt (`.gitignore`)
+- ✅ Configurations sanitisées (placeholders pour secrets)
+- ✅ Aucune donnée réelle ni adresse publique exposée
+- ✅ Licence MIT
+
+---
+
+## 📝 Notes sur l'approche
+
+Ce labo n'est pas figé. J'y documente autant **ce qui marche** que **ce qui coince**, car le diagnostic a une valeur pédagogique. Bug B en est l'exemple : ouvert mais entièrement diagnostiqué, piste de résolution claire (non testée).
+
+Chaque phase est documentée :
+- Décisions architecturales et **pourquoi**
+- Incidents rencontrés et leur résolution
+- Choix de trade-offs (ex : 3 policies FortiGate faute de licence pour 6)
+
+---
+
+## 📊 Métriques du projet
+
+- **9 phases de déploiement** documentées
+- **2 bugs** identifiés et diagnostiqués (1 résolu par workaround, 1 en investigation)
+- **4 services** de supervision opérationnels (syslog-ng, Graylog, Zabbix, LibreNMS)
+- **5 VLANs** segmentés et routés
+- **3 policies** FortiGate condensées (limite évaluation)
+- **11 assertions** validées (init_indices.py OpenSearch)
+
+---
+
+## 👨‍💻 À propos
+
+Projet personnel de portfolio. Compétences démontrées :
+
+- Architecture réseau (VLAN, routage inter-VLAN, segmentation)
+- Sécurité périmétrique (FortiGate, politiques, NAT)
+- Supervision (SIEM, SNMP, syslog, ELK stack)
+- Dépannage et diagnostics avancés (tcpdump, FortiOS debug flow)
+- Infrastructure as Code (Docker, Netplan, GNS3)
+- Documentation technique et rédaction d'incidents
+
+---
+
+## 📄 Licence
+
+Projet sous **licence MIT**. Les configurations sont volontairement nettoyées et ne sont pas destinées à un usage direct en production.
+
+---
+
+*Cédric Tanekeu Somkwe | Ottawa-Gatineau*
+
+*CCNA · Security+ · MD-102 · GNS3 · FortiGate · Cisco IOS · Docker · Python*
