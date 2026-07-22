@@ -21,19 +21,19 @@ Terrain de pratique pour certifications CCNA · Security+ · FCP FortiGate NSE4.
 
 | Composant | État |
 |---|---|
-| Switch L3 (5 VLANs, SNMP) | ✅ |
-| Routeur R1 (inter-VLAN, syslog) | ✅ |
-| FortiGate VM 7.6.7 (3 policies) | ✅ |
-| Graylog + OpenSearch | ✅ |
-| Zabbix + LibreNMS | ✅ |
-| Active Directory | ✅ |
-| Bug A (asymmetric bridge) | 🔶 Workaround |
-| Bug B (syslog FortiGate) | 🔴 Ouvert |
-| NetPilot AI | 🚧 En cours |
+| Switch L3 (5 VLANs, SNMP) | 
+| Routeur R1 (inter-VLAN, syslog) | 
+| FortiGate VM 7.6.7 (3 policies) | 
+| Graylog + OpenSearch | 
+| Zabbix + LibreNMS | 
+| Active Directory | 
+| Bug A (asymmetric bridge) | 
+| Bug B (syslog FortiGate) | 
+| NetPilot AI | 
 
 ---
 
-## 🚀 Quick Start
+##  Quick Start
 
 ```bash
 # 1. Lancer le lab dans GNS3
@@ -57,7 +57,7 @@ Pour les détails, voir [Deployment Guide](docs/deployment.md).
 
 ---
 
-## 📁 Structure
+##  Structure
 
 ```
 configs/
@@ -81,7 +81,7 @@ netpilot/
 
 ---
 
-## 🔧 Stack
+##  Stack
 
 | Outil | Rôle |
 |---|---|
@@ -96,7 +96,7 @@ netpilot/
 
 ---
 
-## ⚠️ Problèmes connus
+##  Problèmes connus
 
 ### Bug A — Asymmetric bridge (GNS3 Cloud node)
 **Statut :** Workaround actif  
@@ -106,11 +106,11 @@ Réponses ARP bloquées via Cloud node → tout passe par lien 10.0.0.0/30 inter
 **Statut :** Non résolu  
 Paquets bloqués avant moteur de policy FortiGate. Piste : changer destination syslog R1.
 
-👉 Diagnostics complets : [Troubleshooting](docs/troubleshooting.md)
+  Diagnostics complets : [Troubleshooting](docs/troubleshooting.md)
 
 ---
 
-## 📄 Licence
+##  Licence
 
 MIT — configurations sanitisées, à adapter à votre environnement.
 
